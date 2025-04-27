@@ -1,76 +1,179 @@
 --[[
-  Script per Fisch - Funzioni:
-  1. AutoFarm (attacca automaticamente i nemici vicini)
-  2. Kill Aura (danno a chi è vicino)
-  3. Speed Hack (aumenta velocità movimento)
+  Fisch Ultimate GUI - Blue Theme
+  Funzioni:
+  1. Auto Cast
+  2. Auto Shake
+  3. Auto Reel
+  4. Teleport to Saved Position
+  5. Inventory
+  6. Shop
+  7. Quests
+  8. Webhook
 ]]
 
 local Player = game.Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 
--- Funzione AutoFarm
-local function AutoFarm()
-    while task.wait() do
-        for _, enemy in ipairs(game.Players:GetPlayers()) do
-            if enemy ~= Player and enemy.Character then
-                local enemyChar = enemy.Character
-                local enemyHumanoid = enemyChar:FindFirstChild("Humanoid")
-                if enemyHumanoid and enemyHumanoid.Health > 0 then
-                    -- Simula un attacco (modifica in base alle meccaniche di Fisch)
-                    game:GetService("ReplicatedStorage").MeleeDamage:FireServer(enemyChar, 50)
-                end
-            end
-        end
-    end
-end
+-- Configurazione colori blu
+local MainColor = Color3.fromRGB(0, 100, 255)
+local BackgroundColor = Color3.fromRGB(20, 20, 40)
+local TextColor = Color3.fromRGB(255, 255, 255)
 
--- Funzione Kill Aura
-local function KillAura()
-    while task.wait(0.2) do
-        for _, enemy in ipairs(game.Players:GetPlayers()) do
-            if enemy ~= Player and enemy.Character then
-                local enemyRoot = enemy.Character:FindFirstChild("HumanoidRootPart")
-                local playerRoot = Character:FindFirstChild("HumanoidRootPart")
-                if enemyRoot and playerRoot then
-                    local distance = (enemyRoot.Position - playerRoot.Position).Magnitude
-                    if distance < 10 then -- Raggio di 10 studs
-                        game:GetService("ReplicatedStorage").MeleeDamage:FireServer(enemy.Character, 100)
-                    end
-                end
-            end
-        end
-    end
-end
+-- Variabili globali
+local FishingEnabled = false
+local SavedPosition = nil
+local shakeConnection = nil
 
--- Speed Hack
-Humanoid.WalkSpeed = 50 -- Modifica la velocità (default 16)
+-- Ottimizzazione servizi
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
--- UI (Interfaccia)
+-- Creazione GUI con Kavo
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("Fisch Hack", "DarkTheme")
+local Window = Library.CreateLib("Fisch Ultimate", {
+    MainColor = MainColor,
+    BackgroundColor = BackgroundColor,
+    TextColor = TextColor
+})
 
--- Tab AutoFarm
-local AutoTab = Window:NewTab("AutoFarm")
-local AutoSection = AutoTab:NewSection("Funzioni")
-AutoSection:NewToggle("AutoFarm", "Attacca automaticamente", function(state)
+-- Funzioni di pesca
+local function AutoCast()
+    while task.wait(1) and FishingEnabled do
+        ReplicatedStorage.FishingEvents.CastLine:FireServer()
+    end
+end
+
+local function AutoShake()
+    if shakeConnection then shakeConnection:Disconnect() end
+    shakeConnection = ReplicatedStorage.FishingEvents.FishBite.OnClientEvent:Connect(function()
+        if FishingEnabled then
+            for i = 1, 10 do
+                ReplicatedStorage.FishingEvents.ShakeRod:FireServer()
+                task.wait(0.1)
+            end
+        end
+    end)
+end
+
+local function AutoReel()
+    while task.wait(0.5) and FishingEnabled do
+        ReplicatedStorage.FishingEvents.ReelIn:FireServer()
+    end
+end
+
+-- Funzioni di teleport
+local function SavePosition()
+    local root = Character:FindFirstChild("HumanoidRootPart")
+    if root then
+        SavedPosition = root.CFrame
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Position Saved",
+            Text = "Current position has been saved!",
+            Duration = 3
+        })
+    end
+end
+
+local function TeleportToSaved()
+    if SavedPosition then
+        local root = Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = SavedPosition
+        end
+    else
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Error",
+            Text = "No position saved!",
+            Duration = 3
+        })
+    end
+end
+
+-- Main Tab
+local MainTab = Window:NewTab("Main")
+local MainSection = MainTab:NewSection("Automatically")
+
+MainSection:NewToggle("Auto Cast", "Automatically casts fishing line", function(state)
+    FishingEnabled = state
     if state then
-        AutoFarm()
+        AutoCast()
+        AutoShake()
+        AutoReel()
+    else
+        if shakeConnection then
+            shakeConnection:Disconnect()
+        end
     end
 end)
 
--- Tab Kill Aura
-local CombatTab = Window:NewTab("Combat")
-local CombatSection = CombatTab:NewSection("Kill Aura")
-CombatSection:NewToggle("Kill Aura", "Danneggia chi è vicino", function(state)
-    if state then
-        KillAura()
+MainSection:NewToggle("Auto Shake", "Automatically shakes when fish bites", function(state)
+    if state and FishingEnabled then
+        AutoShake()
+    elseif not state and shakeConnection then
+        shakeConnection:Disconnect()
     end
 end)
 
--- Tab Movimento
-local MoveTab = Window:NewTab("Movimento")
-local MoveSection = MoveTab:NewSection("Speed Hack")
-MoveSection:NewSlider("Velocità", "Aumenta la velocità", 100, 16, function(value)
-    Humanoid.WalkSpeed = value
+MainSection:NewToggle("Auto Reel", "Automatically reels in fish", function(state)
+    if state and FishingEnabled then
+        AutoReel()
+    end
 end)
+
+MainSection:NewButton("Save Position", "Saves current position", function()
+    SavePosition()
+end)
+
+MainSection:NewButton("Teleport To Saved Position", "Teleports to saved position", function()
+    TeleportToSaved()
+end)
+
+-- Inventory Tab
+local InvTab = Window:NewTab("Inventory")
+local InvSection = InvTab:NewSection("Inventory Manager")
+
+InvSection:NewButton("Open Inventory", "Opens your inventory", function()
+    -- Aggiungi qui la funzione per aprire l'inventario
+end)
+
+-- Shop Tab
+local ShopTab = Window:NewTab("Shop")
+local ShopSection = ShopTab:NewSection("Shop Functions")
+
+ShopSection:NewButton("Open Shop", "Opens the shop menu", function()
+    -- Aggiungi qui la funzione per aprire il negozio
+end)
+
+-- Quests Tab
+local QuestTab = Window:NewTab("Quests")
+local QuestSection = QuestTab:NewSection("Quest Manager")
+
+QuestSection:NewButton("Show Quests", "Displays current quests", function()
+    -- Aggiungi qui la funzione per mostrare le missioni
+end)
+
+-- Webhook Tab
+local WebTab = Window:NewTab("Webhook")
+local WebSection = WebTab:NewSection("Discord Webhook")
+
+WebSection:NewTextBox("Webhook URL", "Enter your webhook URL", function(text)
+    -- Aggiungi qui la logica per il webhook
+end)
+
+-- Animazione di apertura
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Fisch Ultimate GUI",
+    Text = "Blue interface loaded successfully!",
+    Duration = 5,
+    Icon = "rbxassetid://57254792"
+})
+
+-- Aggiungi stile aggiuntivo
+for _, obj in pairs(Window:GetChildren()) do
+    if obj:IsA("Frame") then
+        obj.BackgroundColor3 = BackgroundColor
+        obj.BackgroundTransparency = 0.1
+    end
+end
